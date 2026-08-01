@@ -1,0 +1,709 @@
+---
+title: "Additional aspects related to initial data analysis of  Pokémon data"
+author: "Lara Lusa, Sam Manski, Marianne Huebner"
+date: "July 2026"
+output:
+  html_document:
+    code_folding: "hide"
+    toc: true
+    toc_float: TRUE
+---
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+
+```{css, echo=FALSE}
+.infobox {
+  padding: 1em 1em 1em 4em;
+  margin-bottom: 10px;
+  border: 2px solid orange;
+  border-radius: 10px;
+  background: #d3d3d3 5px center/3em no-repeat;
+  background-image: url("https://img.pokemondb.net/artwork/large/psyduck.jpg");
+  }
+
+.caution {
+  background-image: url("https://img.pokemondb.net/artwork/large/psyduck.jpg");
+}
+
+.resultbox {
+  border-color: #2f855a !important;
+  background-image: url("https://img.pokemondb.net/artwork/large/alakazam.jpg") !important;
+}
+
+.consequencebox {
+  border-color: #6b46c1 !important;
+  background-image: url("https://img.pokemondb.net/artwork/large/hypno.jpg") !important;
+}
+
+.sapdev {
+  padding: 1em 1em 1em 4em;
+  margin-bottom: 10px;
+  border: 2px solid #2b6cb0;
+  border-radius: 10px;
+  background: #eaf2fb 5px center/3em no-repeat;
+  background-image: url("https://img.pokemondb.net/artwork/large/eevee.jpg");
+}
+```
+
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  document.querySelectorAll('.infobox').forEach(function(box) {
+    var txt = box.textContent.trim();
+    if (/^RESULT/i.test(txt)) { box.classList.add('resultbox'); }
+    else if (/^CONSEQUENCE/i.test(txt)) { box.classList.add('consequencebox'); }
+  });
+});
+</script>
+
+```{r packages, message=FALSE, warning=FALSE}
+library(dplyr)
+library(naniar) #missing values
+library(Hmisc)  #data summaries
+library(kableExtra) #display tables
+library(forcats)  #in tidyverse, to work with categorical variables
+library(GGally) #includes ggpairs
+library(pheatmap) #to plot heatmaps
+library(gt) #for tables that use gt
+
+library(dendextend) #coloring dendrograms
+library(viridis) #colors
+library(RColorBrewer) #colors
+
+library(lme4) #linear mixed models
+
+library(plotly)
+library(reshape2)
+
+library(tidyr)
+library(ggrepel) # to add labels to busy graphs
+library(scales) # to evaluate percetages in graphs
+```
+
+
+
+
+```{r extrafunctions0}
+color <- function(x, color="red") {
+  if (knitr::is_latex_output()) {
+    sprintf("\\textcolor{%s}{%s}", color, x)
+  } else if (knitr::is_html_output()) {
+    sprintf("<span style='color: %s;'>%s</span>", color, 
+      x)
+  } else x
+}
+
+#can be used inline to change the color of the text, default is red
+#`r color("try red color")`, `r color("try blue color", "blue")`
+
+# specification used in Hmisc to print the tables
+mu <- markupSpecs$html  
+
+```
+
+
+```{r, out.width="150px"}
+my.urls <- c("https://img.pokemondb.net/artwork/large/mewtwo.jpg", "https://img.pokemondb.net/artwork/large/eevee.jpg", "https://img.pokemondb.net/artwork/large/pikachu.jpg",
+             "https://img.pokemondb.net/artwork/large/hypno.jpg",  "https://img.pokemondb.net/artwork/large/gengar.jpg",
+               "https://img.pokemondb.net/artwork/large/psyduck.jpg", "https://img.pokemondb.net/artwork/large/mew.jpg",  
+             "https://img.pokemondb.net/artwork/large/charizard.jpg",  "https://img.pokemondb.net/artwork/large/palkia.jpg",
+             "https://img.pokemondb.net/artwork/large/arceus.jpg"
+             #,  "https://img.pokemondb.net/artwork/large/dialga.jpg"
+               )
+
+knitr::include_graphics(my.urls)
+```
+
+
+**Disclaimer**: Pokémon images are rendered in this document  using references to online resources[Pokémon Database](https://pokemondb.net), using URLs in the `https://img.pokemondb.net/artwork/` directory and are not stored locally.
+
+## Content of the report
+
+In this report we present two aspects that are not addressed in depth in the main IDA report
+
+- summary statistics by type of Pokémon species
+
+- summary statistics relative to the evolution families
+
+
+These are aspects that can be useful to address in projects that aim to use type as explanatory variable in a regression model (as described in the additional regression report), or that aim at taking into account the possible correlation between species that belong to the same evolutionary family with modelling (for example, by using a mixed effect model or robust standard errors, as described in the sensitivity analysis in the main regression model). 
+
+## To reproduce the content of this file on your computer 
+
+Create a project in R (in RStudio, File -> New project), with two subfolders: Data and Report; save the Rmd version of this document in the Report folder and the data sets describing the properties of the Pokémon and the meta data in the Data folder. Set the working directory  to project directory (menu: Session),
+working within a project makes importing data - working with relative paths - easier.
+
+
+## Import data
+
+Data are saved in a text tab delimited file and are read them using the `read.delim` function. 
+
+
+```{r}
+# local reading of data
+pokemon <- read.delim("../Data/Pokemon_clean.tsv", 
+                      strip.white = TRUE, na.string =c(NA, ""), 
+                      blank.lines.skip = TRUE, 
+                      stringsAsFactors = FALSE)
+# Converting some variables into factors (PokemonPhase)
+pokemon$PokemonPhase_5cat <- factor(pokemon$PokemonPhase_5cat, levels=c("Baby", "Base", "Phase1", "Phase2", "NotEvolving"))
+pokemon$special_status <- factor(pokemon$special_status, levels=c("normal", "sub-legendary", "legendary",  "mythical"))
+#arrange by pokedex number
+pokemon <- arrange(pokemon, pokedex_number)
+
+```
+
+
+Data can be read also online - use the code below. 
+
+```{r, eval = FALSE}
+# read data online 
+pokemon <- read.delim("https://www.dropbox.com/scl/fi/ccdidhioa2qqajrg8g133/Pokemon_clean.tsv?rlkey=yiwoou90ict4stsk0vyy6xte0&dl=1", 
+                      strip.white = TRUE, na.string =c(NA, ""), blank.lines.skip = TRUE)
+
+pokemon$PokemonPhase_5cat <- factor(pokemon$PokemonPhase_5cat, levels=c("Baby", "Base", "Phase1", "Phase2", "NotEvolving"))
+pokemon$special_status <- factor(pokemon$special_status, levels=c("normal", "sub-legendary", "legendary",  "mythical"))
+pokemon <- arrange(pokemon, pokedex_number)
+
+
+
+```
+
+
+
+
+:::: {.infobox data-latex=""}
+
+**NOTE:**
+
+Information about data sources and data cleaning and curation can be found in the data dictionary and in the statistical analysis plan. Data cleaning and data management was performed on this dataset.   
+::::
+
+
+
+## Initial data analysis
+
+
+
+:::: {.infobox data-latex=""}
+
+**NOTE:**
+In the following of this document we describe data screening steps of initial data analysis (IDA) that focus on type and evolutionary families. The other IDA explorations are reported in the IDA main report.
+
+::::
+
+
+
+:::: {.infobox data-latex=""}
+
+**RESULT:**
+The dataset includes `r length(unique(pokemon$pokedex_number))` different Pokémon, which are part of `r length(unique(pokemon$PokemonID))` different evolution families. 
+
+::::
+
+
+### Missing values
+
+#### Prevalence
+
+:::: {.infobox data-latex=""}
+
+**RESULT:**
+Most of the variables in the dataset are complete.
+::::
+
+The variables with missing values are:  `percentage_male`, where missing values indicate that the gender is unknown (which represents a category by itself, as some Pokémon do not have a gender), and second type of Pokémon (variable `type2`, it is possible that a Pokémon has only one type). 
+
+
+```{r ItemMissingness}
+
+tab1 <- pokemon %>%
+  select(PokemonPhase_5cat, generation,  height_m, weight_kg, type1, type2, special_status, 
+         hp, attack, defense,   sp_attack, sp_defense, speed, total, catch_rate,    percentage_male,  base_happiness_8    ) %>%  miss_var_summary() %>%
+  gt::gt() %>%
+    gt::cols_label(
+    variable = "Variable",
+    n_miss = "Missing (count)",
+    pct_miss = "Missing (%)"
+  ) %>%
+  gt::fmt_number(
+    columns = c(pct_miss),
+    decimals = 2
+  )# Item (per variable) missingness
+
+# to get scrollable gt tables 
+tab1 %>% gt::tab_options(container.height = px(200))
+
+```
+
+
+:::: {.infobox data-latex=""}
+
+**COMMENT:**
+Expert domain knowledge suggests that type 1 and type 2 should not be interpreted hierarchically. Namely, for a dual type Pokémon, excluding type 2 (rather than type 1) would be a completely arbitrary choice, as the order in which the types are listed does not matter.  Our current project does not consider type as a potential explanatory variable.  For projects that consider type as a potential explanatory variable,  given the large proportion of single type Pokémon (with missing value for type 2), we would suggest that the type could be modeled using a binary variable to represent each type, rather than the two separate types. Also, all observed combinations between type 1 and type 2 (regardless of order) could be considered as a new variable, but this would require a very large number of degrees of freedom to be used for modelling. 
+::::
+
+
+:::: {.infobox data-latex=""}
+
+NOTE: Considerations about missing values in gender are included in the main IDA report, here we focus on type only. 
+
+::::
+
+:::: {.infobox data-latex=""}
+
+**CONSEQUENCE:** in our further IDA summaries we summarize if Pokémon species are single or dual type; we also provide some summaries by type, using the `is_(type)`,  binary variables that indicate if a Pokémon is of that type. Single-type Pokémon are of one (pure) type, dual-types are of two types (the `dual_type` variable). The summary statistics for type 1 and type 2 are not reported.
+::::
+
+
+
+
+
+
+#### Complete cases
+
+To evaluate the impact of analyzing only Pokémon with single type (as in a complete case analysis), here we report tables that compare the main characteristics of Pokémon with single and dual type.
+
+```{r chCompleteCases1, results="asis", message=FALSE, warning =FALSE , echo=FALSE}
+
+
+s <-
+     Hmisc::summaryM(
+         PokemonPhase_5cat+  weight_kg + height_m+  special_status + 
+         hp + attack+defense+  sp_attack+ sp_defense+ speed+ total+ gender_unknown ~ factor(dual_type),
+         overall = FALSE,
+         test = FALSE, 
+         data = pokemon
+     )
+
+
+Hmisc::html(
+    s,
+    caption = 'Characteristics by single or dual type',
+    exclude1 = TRUE,
+    npct = 'both',
+    digits = 3,
+    prmsd = TRUE,
+    brmsd = TRUE,
+    msdsize = mu$smaller2
+)
+
+
+
+
+```
+
+
+:::: {.infobox data-latex=""}
+
+**RESULT:**
+Single type Pokémon are smaller, weaker, more often of base type and with known gender and not with a special status, compared to dual type Pokémon. 
+::::
+
+
+:::: {.infobox data-latex=""}
+**CONSEQUENCE:**
+A naive analysis that included only Pokémon with a defined second type would focus on a target population considerably different from the complete population. Note that this is not properly missing data, as it is not due to unavailable information but represents a case where the value is not defined (a single-type Pokémon simply does not have a second type); imputation methods would therefore not be appropriate.
+::::
+
+
+
+### Univariate descriptions
+
+
+
+The univariate descriptive statistics (at Pokémon level) are reported in a table, the variables are also presented graphically. 
+
+For easier data management, we define an additional dataset `pokemon_by_type` that facilitates the summarization of the Pokémon by types (see code below).
+
+
+```{r, eval = TRUE}
+pokemon_by_type <- pokemon %>% pivot_longer(cols = c("type1", "type2"), values_drop_na = TRUE, names_to = NULL, values_to = "type")
+```
+
+
+#### Summary statistic in table formats
+
+```{r UnivariateTable2, results="asis", message=FALSE, warning =FALSE , echo=FALSE}
+
+
+#pokemon.to.describe <- pokemon[,-c(1:3, 6:7, 8:9)]
+#pokemon.to.describe <- pokemon %>% select( "weight_kg", "height_m",   "PokemonPhase_5cat", "generation",  "percentage_male",   "special_status" ,      "hp"  ,  "attack", "defense", "sp_attack",         "sp_defense",    "speed" ,            "total" ,            "catch_rate",        "base_happiness_8" , "dual_type", (starts_with("is_") & !starts_with("is_spec"))  )       
+
+
+pokemon.to.describe <- pokemon %>% select( "dual_type", (starts_with("is_") & !starts_with("is_spec"))  )       
+
+
+
+# re-ordering the is_type columns by frequency
+
+#retrieve the names
+names.is_types <- pokemon %>% select(starts_with("is_") & !starts_with("is_spec")  ) %>% names()
+
+#retrieve the absolute frequencies
+freq.is_types <- pokemon %>% select(starts_with("is_") & !starts_with("is_spec")  ) %>% colSums()
+
+#re-order the dataset, works as the is_type variables are at the end of the selected variables
+pokemon.to.describe <- pokemon.to.describe[,c(
+  (1:(ncol(pokemon.to.describe)-length(freq.is_types))), ncol(pokemon.to.describe)-length(freq.is_types)+order(-freq.is_types)) ]
+
+
+s <-      Hmisc::describe(pokemon.to.describe)
+#       height_m + PokemonPhase_5cat +  generation + weight_kg + type1 + type2 + is_mythical + is_legendary + 
+        # hp+ attack+defense+  sp_attack+ sp_defense+ speed+ total+ catch_rate+    percentage_male+ base_happiness_8+  IQ_group        )
+
+
+Hmisc::html(
+    s,
+    caption = 'Overall characteristics',
+    exclude1 = TRUE,
+    npct = 'both',
+    digits = 3,
+    prmsd = TRUE,
+    brmsd = TRUE,
+    msdsize = mu$smaller2
+)
+```
+:::: {.infobox data-latex=""}
+**NOTE:**
+The `is_(type)*` variables are binary variables that indicate if a Pokémon is of that type. Single-type Pokémon are of one (pure) type, dual-types are of two types (the `dual_type` variable. The summary statistics for type 1 and type 2 are not reported.
+::::
+
+
+
+
+
+Additionally, we provide a table that summarizes the descriptive statistics, as it would be usually presented in a paper. 
+
+
+```{r UnivariateTable, results="asis", message=FALSE, warning =FALSE , echo=FALSE}
+
+
+s <-      Hmisc::summaryM(
+       #weight_kg  + height_m + PokemonPhase_5cat +  generation + special_status + 
+      #   hp+ attack+defense+  sp_attack+ sp_defense+ speed+ total+ catch_rate+    percentage_male+ base_happiness_8 + 
+is_water+is_normal+is_grass+is_flying+is_psychic+is_bug+is_poison+is_fire+is_ground+is_rock+is_dark+is_fighting+is_dragon+is_electric+is_steel+ is_ghost + is_fairy + +is_ice
+
+~ 1,
+         data =  pokemon %>% mutate(percentage_male=factor(percentage_male)),
+         overall = FALSE,
+         test = FALSE
+     )
+
+
+Hmisc::html(
+    s,
+    caption = 'Overall characteristics',
+    exclude1 = TRUE,
+    npct = 'both',
+    digits = 3,
+    prmsd = TRUE,
+    brmsd = TRUE,
+    msdsize = mu$smaller2
+)
+```
+
+
+
+
+:::: {.infobox data-latex=""}
+**RESULTS - TYPE**
+There are 18 Pokémon types, water is the most common type among all Pokémon, while the most common type for dual-type Pokémon is flying. Approximately 50% of Pokémon are single-type (type 2 missing) and 50% are dual-type.  
+
+::::
+
+
+
+
+#### Graphical displays 
+
+The number (and proportion) of Pokémon classified by any type is presented with a graph (each Pokémon is classified in 1 or 2 types).
+
+
+
+```{r, out.width="50%"}
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+ggplot(pokemon_by_type, aes(forcats::fct_infreq(type)))+geom_bar(aes(fill = dual_type)) +coord_flip()+scale_fill_manual(values=cbPalette)+labs(x = "Type", fill = "Single/Dual type") + theme_bw()
+
+
+```
+
+
+
+
+
+
+
+
+#### Evolutionary families
+
+Pokémon can be classified in evolution families (they evolve in different Pokémon); the information is summarized in the variable `PokemonID`, which indicates the Pokémon that belong to the same evolution family.  
+
+For example, the evolution family of Charmander includes three Pokémon  and it is displayed below; the evolution of Pikachu also includes 3 phases, but starting from Baby phase, which is uncommon. 
+
+:::: {.infobox data-latex=""}
+**NOTE: **
+Below we show some examples of (famous) evolution families. It is expected that within evolution families the outcome (weight) is associated, therefore in regression modeling it might be sensible to consider this association, taking the correlation within the chain into account, for example using mixed models.
+:::: 
+
+
+
+
+
+```{r Pikachu}
+which.pokemon <- which(pokemon$name=="Pikachu")
+which.use <- which(pokemon$PokemonID==pokemon$PokemonID[which.pokemon])
+which.use <- which.use[c(3,1,2)] # change the order to have the baby as the first
+
+my.urls <- paste0("https://img.pokemondb.net/artwork/large/", tolower(pokemon[which.use,]$name), ".jpg")
+
+
+#my.tab <- rbind(Image = sprintf("![](%s)", paste0(pokemon$name[which.use], ".jpg")), Name=pokemon$name[which.use], Phase=pokemon$PokemonPhase[which.use])
+
+#kable(my.tab) %>% kable_styling()
+
+my.tab <- rbind(Image = sprintf("![](%s)", my.urls), Name=pokemon$name[which.use], Phase=as.character(pokemon$PokemonPhase[which.use]), 
+                Total = pokemon$total[which.use],
+                Height =pokemon$height_m[which.use]
+                
+                )
+
+kable(my.tab) %>% kable_styling()
+
+
+```
+
+The Pokémon that do not evolve are usually stronger than the Base Pokémon. 
+
+```{r NotEvolving}
+
+
+which.pokemon <- which(is.element(pokemon$name, c("Arceus","Mew","Mewtwo" )))
+which.use <- which.pokemon
+
+my.urls <- paste0("https://img.pokemondb.net/artwork/large/", tolower(pokemon[which.use,]$name), ".jpg")
+
+
+#my.tab <- rbind(Image = sprintf("![](%s)", paste0(pokemon$name[which.use], ".jpg")), Name=pokemon$name[which.use], Phase=pokemon$PokemonPhase[which.use])
+
+#kable(my.tab) %>% kable_styling()
+
+my.tab <- rbind(Image = sprintf("![](%s)", my.urls), Name=pokemon$name[which.use], Phase=as.character(pokemon$PokemonPhase[which.use]), 
+                Total = pokemon$total[which.use],
+                Height =pokemon$height_m[which.use]
+                
+                )
+
+kable(my.tab) %>% kable_styling()
+
+
+
+```
+
+
+The table shows the number of Pokémon within each evolution family; most evolution families include 2 Pokémon (n=`r -sort(-table(table(pokemon$PokemonID)))[1]`), followed by 1  (n=`r -sort(-table(table(pokemon$PokemonID)))[2]`) (Pokémon that do not evolve) and 3 (n=`r -sort(-table(table(pokemon$PokemonID)))[2]`). 
+
+
+
+
+```{r}
+kable(table(table(pokemon$PokemonID)), caption ="Number of Pokémon in the evolution family", col.names=c("Number in the evolution family", "Frequency" )) %>% kable_styling()
+```
+
+Few evolution families (`r sum(table(table(pokemon$PokemonID))[-c(1:3)])`) include more than 3 Pokémon. We display the evolution family of the Pokémon Eevee (Base) that includes 8 Pokémon of Phase 1, besides Eevee.
+
+:::: {.infobox data-latex=""}
+**RESULTS: **
+Evolutionary families are typically small: across the 541 families, the median size is 2 species (mean 1.9), and 37% of families (201 of 541) include only a single species, with no other member to compare it to; about 76% of families include at most 2 species. Only a handful of families are larger (up to 9 species, the Eevee family shown above).
+::::
+
+:::: {.infobox data-latex=""}
+**CONSEQUENCE: **
+With most families this small, a random-effects variance for evolutionary family could not be estimated reliably in a mixed-effects model, since the majority of clusters contain too few (or only one) observations to inform the within-family variance component. This supports the use of cluster-robust standard errors, rather than a mixed-effects model or GEE, in the main regression analysis (see SA1 in the main regression report).
+::::
+
+
+
+```{r, out.width="150px", eval =TRUE, echo=FALSE}
+
+which.pokemon <- which(pokemon$name=="Eevee")
+which.use <- which(pokemon$PokemonID==pokemon$PokemonID[which.pokemon])
+my.urls <- paste0("https://img.pokemondb.net/artwork/large/", tolower(pokemon[which.use,]$name), ".jpg")
+#knitr::include_graphics(my.urls)
+## Initial data analysis of the Pokémon dataset
+```
+
+
+```{r, eval = TRUE}
+db <- cbind.data.frame(pokemon[,c("PokemonPhase_5cat", "name", "generation", "height_m", "weight_kg", "type1", "PokemonID")] ) %>% filter(PokemonID==133) %>% cbind.data.frame(path_images=my.urls) %>% cbind.data.frame(image="")
+
+
+db %>%
+  kbl(booktabs = T, align = "c", digits=2, caption="Evolution family of Eevee") %>%
+  kable_styling() %>% 
+  kable_paper(full_width = T) %>%
+  column_spec(9, image = spec_image(db$path_images, 280, 200) # dimensions of the images
+              )  %>% remove_column(c(7,8)) %>% collapse_rows(columns = 1, valign = "top")
+
+
+```
+
+
+
+### Multivariate descriptions
+
+
+:::: {.infobox data-latex=""}
+**NOTE: **
+In multivariate descriptions we evaluate the association between explanatory variables. Special attention is devoted to the association between type and other variables. Dual vs single type Pokemon were described in the missing value domain.
+
+:::: 
+
+
+#### Association (between explanatory variables and structural variables)
+
+Structural variable is type. Below we report descriptive statistics for each type.  Note that the species that belong to two types are included in two groups in the description. 
+
+##### Descriptive statistics of selected variables, by type
+
+Here we describe the characteristic of the Pokémon by type.
+
+
+:::: {.infobox data-latex=""}
+**RESULTS: **
+The Pokémon classified by the type differ by many of the variables. 
+Dragon, steel, rock, ground and fighting types tend to be strong and large; bug, fairy, grass, poison and normal tend to be small and weak. Electric, dragon and fighting are the fastest. Dragon, fighting and psychic have most species with special status, but the least. Dark, dragon and steel have most unhappy species, psychic, electric and normal most happy species. Fairy is the type with most females, while fighting, fire, rock and water are the types with most males; dragon, electric, psychic and steel have most species that are genderless.
+
+:::: 
+
+
+
+
+
+
+```{r chGraphsByType, out.width="49%", echo= FALSE}
+
+
+#ggplot(pokemon_by_type, aes(forcats::fct_infreq(type),weight_kg)) + geom_boxplot() + labs(y="Weight (kg) - log2 scale", x="Type") + theme_bw() + scale_y_continuous(trans = "log2") + coord_flip()
+
+
+ggplot(pokemon_by_type, aes(x=forcats::fct_reorder(type, weight_kg), y=weight_kg)) + geom_boxplot() + labs(y="Weight (kg) - log2 scale", x="Type") + theme_bw() + scale_y_continuous(trans = "log2") + coord_flip()
+
+ggplot(pokemon_by_type, aes(x=forcats::fct_reorder(type, height_m), y=height_m)) + geom_boxplot() + labs(y="Height (m) - log2 scale", x="Type") + theme_bw() + scale_y_continuous(trans = "log2") + coord_flip()
+
+
+ ggplot(pokemon_by_type, aes(x=forcats::fct_reorder(type, hp),hp)) + geom_boxplot() + labs(y="Hit points (HP)", x="Type") + theme_bw() + coord_flip()
+
+ ggplot(pokemon_by_type, aes(x=forcats::fct_reorder(type,attack),attack)) + geom_boxplot() + labs(y="Attack", x="Type") + theme_bw() + coord_flip()
+ 
+ ggplot(pokemon_by_type, aes(x=forcats::fct_reorder(type,defense),defense)) + geom_boxplot() + labs(y="Defense", x="Generation") + theme_bw() + coord_flip()
+ 
+ ggplot(pokemon_by_type, aes(x=forcats::fct_reorder(type, sp_attack),sp_attack)) + geom_boxplot() + labs(y="Special attack", x="Type") + theme_bw() + coord_flip()
+ 
+ ggplot(pokemon_by_type, aes(x=forcats::fct_reorder(type,sp_defense),sp_defense)) + geom_boxplot() + labs(y="Special defense", x="Generation") + theme_bw() + coord_flip()
+ 
+ ggplot(pokemon_by_type, aes(x=forcats::fct_reorder(type,speed),speed)) + geom_boxplot() + labs(y="Speed", x="Type") + theme_bw() + coord_flip()
+ 
+ ggplot(pokemon_by_type, aes(x=forcats::fct_reorder(type,total),total)) + geom_boxplot() + labs(y="Total", x="Type") + theme_bw() + coord_flip()
+ 
+
+```
+
+:::: {.infobox data-latex=""}
+**NOTE: **
+We examine here the association between type and the other explanatory variables considered in the main regression model (gender, happiness, evolutionary phase, dual type, special status), since a strong association between type and these variables could explain why their estimated coefficients change when type is added to the model (see additional regression report).
+::::
+
+```{r, echo=FALSE, out.width="49%", eval =TRUE}
+
+ggplot(pokemon_by_type, aes(x = type, fill = gender_cat)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(
+    x = "Pokémon Type",
+    y = "Proportion",
+    fill = "Gender Category",
+    title = "Proportion of Gender Category Within Each Type"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+# 1. Type vs Happiness Category
+ggplot(pokemon_by_type, aes(x = factor(type), fill = happiness_cat)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = percent_format()) +
+  labs(
+    x = "Type",
+    y = "Proportion",
+    fill = "Happiness Category",
+    title = "Proportion of Happiness Category by Type"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# 2. Type vs Evolutionary Phase
+ggplot(pokemon_by_type, aes(x = factor(type), fill = PokemonPhase_5cat)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = percent_format()) +
+  labs(
+    x = "Type",
+    y = "Proportion",
+    fill = "Evolutionary Phase",
+    title = "Proportion of Evolutionary Phases by Type"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+# 4. Type vs Dual Type
+ggplot(pokemon_by_type, aes(x = factor(type), fill = dual_type)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = percent_format()) +
+  labs(
+    x = "Type",
+    y = "Proportion",
+    fill = "Dual Type",
+    title = "Proportion of Single vs Dual-Type Pokémon by Type"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# 5. Type vs Special Status
+ggplot(pokemon_by_type, aes(x = factor(type), fill = special_status)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = percent_format()) +
+  labs(
+    x = "Type",
+    y = "Proportion",
+    fill = "Special Status",
+    title = "Proportion of Pokémon by Special Status and Type"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+```
+
+
+
+##### Type and height: joint distribution relevant to the planned interaction
+
+:::: {.infobox data-latex=""}
+**NOTE: **
+Type is considered as a moderator of the height-weight association in the additional regression report (type×height interaction). Interactions cannot be evaluated using the outcome during IDA; instead, we examine here the joint distribution of type and height only, following the recommendation that "if interactions of predictors have been pre-specified, IDA may evaluate the joint distribution of these predictors" (Heinze et al., 2024, "Regression without regrets").
+::::
+
+:::: {.infobox data-latex=""}
+**RESULTS: **
+The height boxplot by type shown above indicates that height varies systematically by type (e.g., dragon and steel tend to be tall, bug and fairy tend to be short), confirming that type and height are associated predictors. The number of species per type ranges from 52 (ice) to 154 (water), counting dual-type species under both types; the interquartile range of height per type varies from 0.8 m (bug, dark) to 1.9 m (dragon). No type is so sparse or so narrowly distributed in height as to make its interaction term inestimable, but types with fewer species or a narrower height range (e.g., ice, fairy) will have less precise type-specific height slopes than more numerous or more height-variable types (e.g., water, dragon).
+::::
+
+:::: {.infobox data-latex=""}
+**CONSEQUENCE: **
+The association between type and height means that the type×height interaction terms in the additional regression report come with some estimation uncertainty by design, more so for less numerous or less height-variable types. This should be kept in mind when interpreting the interaction coefficients, particularly for types with small sample size.
+::::
+

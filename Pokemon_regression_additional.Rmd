@@ -1,0 +1,456 @@
+---
+title: "The weight of Pokémon species - Regression analyses considering type"
+author: "Lara Lusa, Sam Manski, Marianne Huebner"
+date: "July 2026"
+output:
+  html_document:
+    code_folding: "hide"
+    toc: true
+    toc_float: TRUE
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, error = FALSE, message = FALSE)
+```
+
+
+
+```{css, echo=FALSE}
+.infobox {
+  padding: 1em 1em 1em 4em;
+  margin-bottom: 10px;
+  border: 2px solid orange;
+  border-radius: 10px;
+  background: #d3d3d3 5px center/3em no-repeat;
+  background-image: url("https://img.pokemondb.net/artwork/large/psyduck.jpg");
+  }
+
+.caution {
+  background-image: url("https://img.pokemondb.net/artwork/large/psyduck.jpg");
+}
+
+.resultbox {
+  border-color: #2f855a !important;
+  background-image: url("https://img.pokemondb.net/artwork/large/alakazam.jpg") !important;
+}
+
+.consequencebox {
+  border-color: #6b46c1 !important;
+  background-image: url("https://img.pokemondb.net/artwork/large/hypno.jpg") !important;
+}
+
+.sapdev {
+  padding: 1em 1em 1em 4em;
+  margin-bottom: 10px;
+  border: 2px solid #2b6cb0;
+  border-radius: 10px;
+  background: #eaf2fb 5px center/3em no-repeat;
+  background-image: url("https://img.pokemondb.net/artwork/large/eevee.jpg");
+}
+```
+
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  document.querySelectorAll('.infobox').forEach(function(box) {
+    var txt = box.textContent.trim();
+    if (/^RESULT/i.test(txt)) { box.classList.add('resultbox'); }
+    else if (/^CONSEQUENCE/i.test(txt)) { box.classList.add('consequencebox'); }
+  });
+});
+</script>
+
+
+```{r libraries, include = FALSE}
+library(readr)
+library(tidyverse)
+library(lmtest) #for lrtest
+library(lme4)
+library(ggrepel) # to add labels to busy graphs
+library(scales) # for graphs
+
+library(sjPlot) #for model results
+library(ggfortify) # for model diagnostics
+```
+
+
+
+```{r read_data, eval=TRUE, include = FALSE}
+# Read Analysis-ready data created in IDA
+Pokemon_clean <- readRDS("../Data/Pokemon_afterIDA.Rdata")
+```
+
+
+```{r fit_models}
+
+
+Pokemon_clean$gender_cat <- factor(Pokemon_clean$gender_cat )
+Pokemon_clean$gender_cat <-relevel(Pokemon_clean$gender_cat, ref = "Equal")
+Pokemon_clean$happiness_cat <-relevel(factor(Pokemon_clean$happiness_cat), ref = "Normal")
+
+
+mv_fit_step <- lm(formula = log2(weight_kg) ~ log2(height_m) + height_m + gender_cat + 
+    I(hp/10) + I(defense/10) + I(sp_attack/10) + I(speed/10) + 
+    special_status + happiness_cat, data = Pokemon_clean, x = T, 
+    y = T)
+
+
+```
+
+```{css, echo=FALSE}
+.infobox {
+  padding: 1em 1em 1em 4em;
+  margin-bottom: 10px;
+  border: 2px solid orange;
+  border-radius: 10px;
+  background: #d3d3d3 5px center/3em no-repeat;
+  background-image: url("images/psyduck.jpg");
+  }
+
+.caution {
+  background-image: url("images/psyduck.jpg");
+}
+
+```
+
+# Introduction
+
+
+The aim of this analysis project is to study the variability in the weight of Pokémon species. The statistical analysis plan (SAP)  specifies that linear regression models will be used to estimate the association between height and weight, both univariable and multivariable. The document Regression_Report addresses the problem with univariable and multivariable analyses. 
+
+In this document we assess also the association of type with the outcome. We assume that all the models described in the document Regression_Report were fitted and analyzed.  
+
+
+
+
+# Pokémon types
+We start from the multivariable model selected with the backward AIC based method and we add the 18 Pokémon types as explanatory variables. Each type is defined as a binary variable, indicating if the species belongs or does not belong to the type. (See additional IDA report for more details about this variable).
+
+```{r}
+
+mv_fit_type <- update(mv_fit_step, .~. + is_rock +  is_dragon   + is_bug + is_steel + is_ground+ is_water+is_fire+is_grass+is_ice+is_flying+is_fairy+is_ghost+is_poison+is_electric+is_normal+is_dark+is_psychic+is_fighting)
+summary(mv_fit_type) %>% tab_model()
+
+```
+
+
+
+:::: {.infobox data-latex=""}
+**RESULTS: **
+Including type increases the R\^2 (from 0.71 to 0.75) and decreases the residual standard error. Many types have a statistically significant association with weight. Rock, ice, steel and ground are statistically significantly positively associated, grass, flying, fairy, ghost and poison are statistically significantly negatively associated. The estimated coefficients of other explanatory variables change compared to the model without type, and the associations are generally attenuated (as might be expected, as type is associated to the other variables). 
+::::
+
+
+
+
+We fit also a model where the interaction between height (linear + log2) and all types are considered. The joint distribution of type and height was examined during IDA (see additional IDA report); no type was found to be so sparse or so narrowly distributed in height as to make its interaction term inestimable, though estimates for less numerous types are expected to be less precise. To limit the number of terms, backward elimination in the interaction model is performed based on AIC. The backward elimination drops both interactions together for a given type (pairwise), or none. The procedure only allows dropping a main effect after both interactions are eliminated (hierarchical rule).
+
+```{r}
+
+# first fit a model with all interactions between types and height
+
+mv_fit_type_int <- lm(
+  log2(weight_kg) ~ log2(height_m) + height_m + gender_cat +
+    I(hp/10) + I(attack/10) + I(defense/10) +
+    I(sp_attack/10) + I(sp_defense/10) + I(speed/10) +
+    happiness_cat +
+    is_rock + is_ice + is_dragon + is_bug + is_steel + is_ground +
+    is_water + is_fire + is_grass + is_flying + is_fairy + is_ghost +
+    is_poison + is_electric + is_normal + is_dark + is_psychic + is_fighting +
+    # Interactions
+    is_rock*log2(height_m) + is_ice*log2(height_m) + is_dragon*log2(height_m) + 
+    is_bug*log2(height_m) + is_steel*log2(height_m) + is_ground*log2(height_m) +
+    is_water*log2(height_m) + is_fire*log2(height_m) + is_grass*log2(height_m) +
+    is_flying*log2(height_m) + is_fairy*log2(height_m) + is_ghost*log2(height_m) +
+    is_poison*log2(height_m) + is_electric*log2(height_m) + is_normal*log2(height_m) +
+    is_dark*log2(height_m) + is_psychic*log2(height_m) + is_fighting*log2(height_m) +
+    is_rock*height_m + is_ice*height_m + is_dragon*height_m +
+    is_bug*height_m + is_steel*height_m + is_ground*height_m +
+    is_water*height_m + is_fire*height_m + is_grass*height_m +
+    is_flying*height_m + is_fairy*height_m + is_ghost*height_m +
+    is_poison*height_m + is_electric*height_m + is_normal*height_m +
+    is_dark*height_m + is_psychic*height_m + is_fighting*height_m,
+  data = Pokemon_clean
+)
+
+```
+
+
+```{r stepSelection}
+
+## -------------------------------
+## Blocked, hierarchical backward AIC for type–height interactions
+## -------------------------------
+
+# types you use as 0/1 indicators in the model:
+type_names <- c(
+  "rock","ice","dragon","bug","steel","ground","water","fire","grass",
+  "flying","fairy","ghost","poison","electric","normal","dark","psychic","fighting"
+)
+
+# helper: given term labels from terms(model), detect presence of main & interactions (either order)
+present_terms_for_type <- function(terms_in_model, type) {
+  main <- paste0("is_", type)
+  int_lin_a  <- paste0("is_", type, ":height_m")
+  int_lin_b  <- paste0("height_m:is_", type)
+  int_log_a  <- paste0("is_", type, ":log2(height_m)")
+  int_log_b  <- paste0("log2(height_m):is_", type)
+  list(
+    main_present   = main %in% terms_in_model,
+    main_label     = main,
+    lin_present    = any(c(int_lin_a, int_lin_b) %in% terms_in_model),
+    lin_label      = intersect(c(int_lin_a, int_lin_b), terms_in_model),
+    log2_present   = any(c(int_log_a, int_log_b) %in% terms_in_model),
+    log2_label     = intersect(c(int_log_a, int_log_b), terms_in_model)
+  )
+}
+
+# helper: update formula dropping a vector of exact term labels
+drop_terms_from_formula <- function(fml, drops) {
+  if (length(drops) == 0) return(fml)
+  rhs <- paste(". ~ . -", paste(drops, collapse = " - "))
+  update(fml, rhs)
+}
+
+# main routine
+step_blocked_types <- function(model, data, type_names,
+                               strict_pairs = TRUE, # if TRUE, only drop both interactions together
+                               verbose = TRUE) {
+  current_model <- model
+  current_aic   <- AIC(current_model)
+
+  log_df <- data.frame(iter = integer(), type = character(),
+                       dropped = character(), old_AIC = numeric(),
+                       new_AIC = numeric(), dAIC = numeric(),
+                       stringsAsFactors = FALSE)
+
+  improved <- TRUE
+  iter <- 0
+  while (improved) {
+    iter <- iter + 1
+    improved <- FALSE
+    best_model <- current_model
+    best_aic   <- current_aic
+    best_drop  <- NULL
+    best_type  <- NULL
+
+    terms_in_model <- attr(terms(current_model), "term.labels")
+
+    for (tp in type_names) {
+      pres <- present_terms_for_type(terms_in_model, tp)
+
+      # Which drops are allowed under hierarchy?
+
+      # Case A: both interactions present -> propose dropping BOTH interactions together
+      if (pres$lin_present && pres$log2_present) {
+        drop_vec <- c(pres$lin_label, pres$log2_label)
+        drop_vec <- unique(as.character(drop_vec))
+        # Try dropping both interactions
+        cand_formula <- drop_terms_from_formula(formula(current_model), drop_vec)
+        cand_model   <- lm(cand_formula, data = data)
+        cand_aic     <- AIC(cand_model)
+        if (cand_aic < best_aic) {
+          best_model <- cand_model
+          best_aic   <- cand_aic
+          best_drop  <- drop_vec
+          best_type  <- tp
+          improved   <- TRUE
+        }
+      } else {
+        # Case B (optional): only one interaction present
+        if (!strict_pairs) {
+          # allow dropping whichever single interaction remains
+          single <- unique(as.character(c(pres$lin_label, pres$log2_label)))
+          single <- single[nchar(single) > 0]
+          if (length(single) == 1) {
+            cand_formula <- drop_terms_from_formula(formula(current_model), single)
+            cand_model   <- lm(cand_formula, data = data)
+            cand_aic     <- AIC(cand_model)
+            if (cand_aic < best_aic) {
+              best_model <- cand_model
+              best_aic   <- cand_aic
+              best_drop  <- single
+              best_type  <- tp
+              improved   <- TRUE
+            }
+          }
+        }
+      }
+
+      # Case C: interactions absent, main present -> main is eligible for drop
+      if (!pres$lin_present && !pres$log2_present && pres$main_present) {
+        drop_vec <- pres$main_label
+        cand_formula <- drop_terms_from_formula(formula(current_model), drop_vec)
+        cand_model   <- lm(cand_formula, data = data)
+        cand_aic     <- AIC(cand_model)
+        if (cand_aic < best_aic) {
+          best_model <- cand_model
+          best_aic   <- cand_aic
+          best_drop  <- drop_vec
+          best_type  <- tp
+          improved   <- TRUE
+        }
+      }
+
+      # Case D: interactions present but main absent -> OK, we already handle dropping interactions above.
+      # We never try to drop a main that isn't in the model.
+    } # end for tp
+
+    if (improved) {
+      if (verbose) {
+        cat(sprintf("Iter %d: drop (%s): %s   ΔAIC = %.3f\n",
+                    iter, best_type, paste(best_drop, collapse=", "),
+                    best_aic - current_aic))
+      }
+      log_df <- rbind(log_df, data.frame(
+        iter = iter,
+        type = best_type,
+        dropped = paste(best_drop, collapse = ", "),
+        old_AIC = current_aic,
+        new_AIC = best_aic,
+        dAIC = best_aic - current_aic,
+        stringsAsFactors = FALSE
+      ))
+      current_model <- best_model
+      current_aic   <- best_aic
+    }
+  } # while
+
+  list(model = current_model, log = log_df)
+}
+
+
+
+# mv_fit_type_int (defined above) is the full model with all type×height interactions
+
+# Example call (strict pair-drop on interactions):
+
+
+res <- step_blocked_types(mv_fit_type_int, data = Pokemon_clean,
+                          type_names = type_names,
+                          strict_pairs = TRUE,  # only drop both interactions together
+                          verbose = FALSE)
+
+final_model <- res$model
+cat("\nFinal AIC:", AIC(final_model), "\n")
+summary(final_model)
+res$log  # shows the elimination path
+
+summary(final_model) %>% tab_model()
+
+```
+
+
+
+:::: {.infobox data-latex=""}
+**RESULTS: **
+The interactions retained in the model after variable selection are those for rock, ghost and poison. The main effects are those of rock, ice, steel, ground, fire, grass, flying, fairy, ghost and poison. The R2 is similar to that of the model without interactions. 
+:::: 
+
+
+The graphical presentation of the estimated association between height and weight among different types is shown below. The types that were omitted from variable selection are grouped in the Other class, the weight is estimated using the reference value for categorical variables and the median value for numerical variables. 
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(RColorBrewer)
+library(scales)
+library(ggrepel)
+
+# --- 1. Define all types and those kept in final_model ---
+all_types <- c("is_rock","is_ice","is_dragon","is_bug","is_steel","is_ground",
+               "is_water","is_fire","is_grass","is_flying","is_fairy","is_ghost",
+               "is_poison","is_electric","is_normal","is_dark","is_psychic","is_fighting")
+
+kept_types <- intersect(all_types, attr(terms(final_model), "term.labels"))
+
+# --- 2. Reference values for other predictors ---
+ref_values <- Pokemon_clean %>%
+  summarise(across(where(is.numeric), median, na.rm = TRUE))
+ref_values$gender_cat        <- levels(Pokemon_clean$gender_cat)[1]
+ref_values$happiness_cat     <- levels(Pokemon_clean$happiness_cat)[1]
+ref_values$PokemonPhase_5cat <- levels(Pokemon_clean$PokemonPhase_5cat)[1]
+
+# --- 3. Build predictions per type within observed ranges ---
+pred_list <- list()
+
+for (t in all_types) {
+  obs_range <- Pokemon_clean %>%
+    filter(.data[[t]] == 1) %>%
+    summarise(min_h = min(height_m, na.rm = TRUE),
+              max_h = max(height_m, na.rm = TRUE))
+  
+  if (nrow(obs_range) == 0 || is.na(obs_range$min_h)) next
+  
+  height_seq <- seq(obs_range$min_h, obs_range$max_h, length.out = 100)
+  
+  newdata <- data.frame(
+    height_m = height_seq,
+    log2_height_m = log2(height_seq)
+  )
+  
+  for (col in setdiff(names(ref_values), c("height_m","log2_height_m"))) {
+    newdata[[col]] <- ref_values[[col]]
+  }
+  
+  for (tt in all_types) {
+    newdata[[tt]] <- ifelse(tt == t, 1, 0)
+  }
+  
+  newdata$type <- ifelse(t %in% kept_types, t, "Other")
+  newdata$pred <- predict(final_model, newdata)
+  newdata$pred_kg <- 2^(newdata$pred)
+  newdata$line_type <- ifelse(newdata$type == "Other", "dashed", "solid")
+  
+  pred_list[[t]] <- newdata
+}
+
+pred_all <- bind_rows(pred_list)
+
+# --- 4. Assign Dark2 colors ---
+main_types <- unique(pred_all$type)
+kept_colors <- brewer.pal(min(length(kept_types), 8), "Dark2")  # max 8 colors in Dark2
+# If more than 8 kept types, repeat colors
+kept_colors <- rep(kept_colors, length.out = length(kept_types))
+colors_vec <- c(kept_colors, "gray50")  # last color for Other
+names(colors_vec) <- c(kept_types, "Other")
+
+# --- 5. Prepare labels at endpoints ---
+end_points <- pred_all %>%
+  group_by(type) %>%
+  filter(height_m == max(height_m)) %>%
+  ungroup()
+
+# --- 6. Plot ---
+ggplot(pred_all, aes(x = height_m, y = pred_kg, color = type, linetype = line_type)) +
+  geom_line(size = 1.2) +
+  geom_text_repel(data = end_points,
+                  aes(label = type),
+                  nudge_x = 0.1,
+                  segment.color = NA,
+                  direction = "y",
+                  hjust = 0,
+                  size = 4,
+                  box.padding = 0.2,
+                  max.overlaps = 20) +
+  scale_x_continuous(trans = "log2",
+                     breaks = c(0.25, 0.5, 1, 2, 4, 8),
+                     labels = c("0.25","0.5","1","2","4","8")) +
+  scale_y_continuous(trans = "log2",
+                     breaks = c(1, 2, 5, 10, 20, 50, 100, 200, 500),
+                     labels = c("1","2","5","10","20","50","100","200","500")) +
+  scale_color_manual(values = colors_vec) +
+  scale_linetype_identity() +
+  labs(x = "Height (m)",
+       y = "Predicted Weight (kg)") +
+  theme_minimal(base_size = 14) +
+  theme(legend.position = "none")
+
+
+```
+
+
+:::: {.infobox data-latex=""}
+**RESULTS: **
+The differences between types are substantial. Ghost type has a slightly different shape than the other types. The growth for some types is very steep (steel, ice, ground, fire, rock); other types as fairy, grass and flying increase weight at lower rate, as height increases. The distinctive shape of the poison type is determined by the extreme values of height and weight of Eternatus (poison and dragon type).
+::::
