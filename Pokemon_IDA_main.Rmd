@@ -352,7 +352,7 @@ Hmisc::html(
 
 s <-
      Hmisc::summaryM(
-         PokemonPhase_5cat+  weight_kg + height_m+  special_status + 
+         PokemonPhase_5cat+  height_m+  special_status + 
          hp+ attack+defense+  sp_attack+ sp_defense+ speed+ total+ catch_rate~ factor(gender_unknown, labels=c("Known gender", "Genderless")),
          data = pokemon,
          overall = FALSE,
@@ -377,7 +377,7 @@ Hmisc::html(
 
 :::: {.infobox data-latex=""}
 **RESULT:**
-Compared to others, genderless Pokémon are often not evolving, are considerably larger and stronger, are often mythical, sub-legendary or legendary.
+Compared to others, genderless Pokémon are often not evolving, are considerably taller and stronger, are often mythical, sub-legendary or legendary.
 ::::
 
 
@@ -709,8 +709,10 @@ tail(sort(pokemon$weight_kg), 10)
 ```
 
 
+
+
 ```{r tabwithFigs1}
-db  <-  data.frame(name=pokemon$name[which(pokemon$weight_kg>900)],  weight=pokemon$weight_kg[which(pokemon$weight_kg>900)], height = pokemon$height_m[which(pokemon$weight_kg>900)], special = pokemon$special_status[which(pokemon$weight_kg>900)], image = "")
+db  <-  data.frame(name=pokemon$name[which(pokemon$weight_kg>900)],  weight=pokemon$weight_kg[which(pokemon$weight_kg>900)], special = pokemon$special_status[which(pokemon$weight_kg>900)], image = "")
 
 path_images = paste0("https://img.pokemondb.net/artwork/large/", tolower(pokemon$name[which(pokemon$weight_kg>900)]), ".jpg") 
 
@@ -720,7 +722,7 @@ db %>% arrange(desc(weight)) %>%
   kbl(booktabs = T, align = "c") %>%
   kable_styling() %>%
   kable_paper(full_width = T) %>%
-  column_spec(5, image = spec_image(path_images[order(-db$weight)], 280, 200) # dimensions of the images
+  column_spec(4, image = spec_image(path_images[order(-db$weight)], 280, 200) # dimensions of the images
               ) 
 
 
@@ -741,7 +743,7 @@ A table reports the details of the `r  sum(pokemon$height_m>7.5)` with height ab
 
 
 ```{r tabwithFigs}
-db  <-  data.frame(name=pokemon$name[which(pokemon$height_m>7.5)],  weight=pokemon$weight_kg[which(pokemon$height_m>7.5)], height = pokemon$height_m[which(pokemon$height_m>7.5)], 
+db  <-  data.frame(name=pokemon$name[which(pokemon$height_m>7.5)],  height = pokemon$height_m[which(pokemon$height_m>7.5)], 
 special = pokemon$special_status[which(pokemon$height_m>7.5)], 
 image = "")
 
@@ -753,7 +755,7 @@ db %>% arrange(desc(height)) %>%
   kbl(booktabs = T, align = "c") %>%
   kable_styling() %>% 
   kable_paper(full_width = T) %>%
-  column_spec(5, image = spec_image(path_images[order(-db$height)], 280, 200) # dimensions of the images
+  column_spec(4, image = spec_image(path_images[order(-db$height)], 280, 200) # dimensions of the images
               ) 
 
 ```

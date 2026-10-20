@@ -73,7 +73,7 @@ Initial Data Analysis (IDA) is a systematic process to provide reliable knowledg
 
 **COMMENT: **
 
-In this document we first summarize the dataset with a table that would be suitable for inclusion in a scientific rerport. Then we show results from a naïve linear regression model (SAP version 1) explaining the variation in weight with variation in height, not taking into account results from IDA. We compare this to an IDA-informed linear regression model using log-transformations for weight and height.
+In this document we first summarize the dataset with a table that would be suitable for inclusion in a scientific report. Then we show results from a naïve linear regression model (SAP version 1) explaining the variation in weight with variation in height, not taking into account results from IDA. We compare this to an IDA-informed linear regression model using log-transformations for weight and height.
 
 Then we conduct multivariable linear regression analyses as outlined in the statistical analysis plan that was updated after IDA.
 
@@ -215,7 +215,7 @@ autoplot(IDA_first_fit, which = 1:6, ncol = 2) #ggfortify package
 The model estimates that  if we compare two Pokémon, where one is twice the height of the other, the weight of the taller Pokémon is, on average,  `r round(2^as.numeric(IDA_first_fit$coef[2]),1)` times greater.
 
 
-When examining the IDA-informed fit, we see that the issues of heteroskedasticity and non-normal residual variance are largely resolved. Further, the regression output shows that the R\^2 for the IDA-informed fit is much higher than that of the naïve fit (0.66 vs 0.40).
+When examining the IDA-informed fit, we see that the issues of heteroskedasticity and non-normal residual variance are largely resolved. The original-scale model had R^2=0.40 for weight, whereas the log-scale model had R^2=0.66 for log-transformed weight; these values are not directly comparable. Residual diagnostics supported the log-scale specification, although lack of fit remained at larger heights.
 
 We notice that the Pokémon with largest residuals are Cosmoem (ID=790), Gastly and Haunter (ID=92 and 93), which have unusual weight/height combinations (or equivalently, BMI values). 
 ::::
@@ -522,7 +522,7 @@ geom_smooth(aes(col="GAM smoother"))
 #### Correlation within evolutionary family (SA1)
 
 
-Observations may not be fully independent, as species within the same evolutionary family are expected to be more similar. This is partially addressed by including evolutionary phase as a covariate; the residual correlation within evolutionary family is assessed directly below (SA1), using cluster-robust standard errors rather than mixed-effects models or GEE, since evolutionary families are typically small (see IDA additional report), with many families including a single species, making reliable estimation of a random-effects variance impractical.
+Observations may not be fully independent, as species within the same evolutionary family are expected to be more similar. This is partially addressed by including evolutionary phase as a covariate; the residual correlation within evolutionary family is assessed directly below (SA1). Cluster-robust standard errors were used as a simple way to allow for within-family dependence without specifying a random-effects distribution. 
 
 To take into account the correlation within Pokemon evolutionary family, we fit a model that includes the variables selected with the backward procedure and derive the robust standard errors of the estimated regression coefficients.
 
@@ -1042,7 +1042,7 @@ Unhappy Pokémon are estimated to be heavier than normal, happy lighter (but not
 
 The estimated association between height and weight is consistent across all sensitivity analyses (SA1-SA5): its direction and approximate magnitude do not change materially when accounting for within-family correlation, restricting to shorter Pokémon, removing influential species, or recoding gender.
 
-Some coefficients are less robust than others, however. Taking into account the correlation within evolutionary family (SA1) increases standard errors throughout, and moves the coefficients for sub-legendary and mythical special status, and for the "mostly female" gender category, from p<0.05 to p>0.05; happiness_cat remains non-significant, as it already was without this correction.
+Some coefficients are less robust than others, however. Taking into account the correlation within evolutionary family (SA1) generally increased standard errors, and moved the coefficients for sub-legendary and mythical special status, and for the "mostly female" gender category, from p<0.05 to p>0.05; happiness_cat remains non-significant, as it already was without this correction.
 
 Comparing the species removed based on Cook's distance (SA3) to those flagged during IDA by the profile imbalance index (a predictor-only measure, computed before model fitting) shows a modest but above-chance overlap: 4 of the 10 species with the highest profile imbalance were also flagged by Cook's distance, versus about 0.6 expected by chance. Most influential species, however, are not captured by the profile imbalance index, since influence also depends on the relationship with the outcome, which the index does not use; the two diagnostics are complementary rather than interchangeable.
 

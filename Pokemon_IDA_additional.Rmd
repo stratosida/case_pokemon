@@ -587,11 +587,6 @@ Dragon, steel, rock, ground and fighting types tend to be strong and large; bug,
 ```{r chGraphsByType, out.width="49%", echo= FALSE}
 
 
-#ggplot(pokemon_by_type, aes(forcats::fct_infreq(type),weight_kg)) + geom_boxplot() + labs(y="Weight (kg) - log2 scale", x="Type") + theme_bw() + scale_y_continuous(trans = "log2") + coord_flip()
-
-
-ggplot(pokemon_by_type, aes(x=forcats::fct_reorder(type, weight_kg), y=weight_kg)) + geom_boxplot() + labs(y="Weight (kg) - log2 scale", x="Type") + theme_bw() + scale_y_continuous(trans = "log2") + coord_flip()
-
 ggplot(pokemon_by_type, aes(x=forcats::fct_reorder(type, height_m), y=height_m)) + geom_boxplot() + labs(y="Height (m) - log2 scale", x="Type") + theme_bw() + scale_y_continuous(trans = "log2") + coord_flip()
 
 
